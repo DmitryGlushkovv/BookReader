@@ -1,0 +1,152 @@
+import kivy.uix.button
+import os
+import shutil
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+from lxml import etree
+import ebookmeta
+from kivy.uix.popup import Popup
+from pathlib import Path
+from kivy.app import App
+from kivy.uix.button import Button
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.config import Config
+from kivy.uix.textinput import TextInput
+from kivy.uix.label import Label
+import tkinter.filedialog
+from urllib import request
+
+Config.set('graphics', 'height', '100')
+Config.set('graphics', 'width', '300')
+Config.set('graphics', 'resizeble', False)
+
+
+class MyApp(kivy.app.App):
+    def __init__(self):
+        self.books = dict()
+        super().__init__()
+
+    def build(self):
+        self.title = 'Меню'
+        self.box = BoxLayout(orientation='vertical')
+        self.btn1 = kivy.uix.button.Button(background_color=[255, 255, 255, 1], color=[0, 250, 1, 1], text='Мои книги',
+                                           size=(20, 20), on_press=self.my_books)
+        self.btn2 = kivy.uix.button.Button(background_color=[255, 255, 255, 1], color=[0, 250, 1, 1],
+                                           text='Добавить книгу', size=(20, 20), on_press=self.add_book)
+        self.btn3 = kivy.uix.button.Button(background_color=[255, 255, 255, 1], color=[0, 250, 1, 1], text='Удалить книгу',
+                                           size=(20, 20), on_press=self.delete_book)
+        self.btn4 = kivy.uix.button.Button(background_color=[255, 255, 255, 1], color=[0, 250, 1, 1], text='Выход',
+                                           size=(20, 20), on_press=self.quick)
+        self.box.add_widget(self.btn1)
+        self.box.add_widget(self.btn2)
+        self.box.add_widget(self.btn3)
+        self.box.add_widget(self.btn4)
+        self.a = 0
+        return self.box
+
+    def add_book(self, arg):
+        if 'Книги' not in os.listdir():
+            os.mkdir('Книги')
+        file = tkinter.filedialog.askopenfile("r")
+        new_location = './Книги'
+        if file and file.name.endswith('.fb2'):
+            shutil.copy(file.name, new_location)
+
+    def quick(self, arg):
+        my_app.stop()
+
+    def delete_book(self, arg):
+        self.layout = GridLayout(cols=1, padding=10)
+        self.popup = Popup(title='Удалить книгу', content=self.layout)
+        p = Path("./Книги")
+        books = []
+        for x in p.rglob("*"):
+            books.append(x)
+            btn = Button(text=x.name, background_color=[255, 255, 255, 1], color=[0, 250, 1, 1], on_press=self.deleting)
+            self.books[x.name] = x
+            self.layout.add_widget(btn)
+        button = Button(text="Назад", on_press=self.popup.dismiss, background_color=[255, 255, 255, 1], color=[0, 250, 1, 1])
+        self.layout.add_widget(button)
+        self.popup.open()
+    def deleting(self, arg):
+        os.remove(fr'Книги\{arg.text}')
+        self.layout.clear_widgets()
+        p = Path("./Книги")
+        books = []
+        for x in p.rglob("*"):
+            books.append(x)
+            btn = Button(text=x.name, background_color=[255, 255, 255, 1], color=[0, 250, 1, 1], on_press=self.deleting)
+            self.books[x.name] = x
+            self.layout.add_widget(btn)
+        button = Button(text="Назад", on_press=self.popup.dismiss, background_color=[255, 255, 255, 1], color=[0, 250, 1, 1])
+        self.layout.add_widget(button)
+    def my_books(self, arg):
+        layout = GridLayout(cols=1, padding=10)
+        popup = Popup(title='Мои книги', content=layout)
+        p = Path("./Книги")
+        books = []
+        for x in p.rglob("*"):
+            meta = ebookmeta.get_metadata(str(x))
+            books.append(x)
+            btn = Button(text=x.name,background_color=[255, 255, 255, 1],color=[0, 250, 1, 1],on_press=self.reading)
+            self.books[x.name] = x
+            layout.add_widget(btn)
+        button = Button(text="Назад", on_press=popup.dismiss, background_color=[255, 255, 255, 1], color=[0, 250, 1, 1])
+        layout.add_widget(button)
+        popup.open()
+
+    def reading(self, arg):
+        self.pages = 1
+        self.layout = GridLayout(cols=1, padding=10)
+        self.meta = ebookmeta.get_metadata(fr'Книги\{arg.text}')
+        def parse_xml(file_path):
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            def extract_text(element):
+                text = element.text.strip() if element.text else ''
+                for child in element:
+                    text += extract_text(child)
+                return text
+            xml_text = extract_text(root)
+            return xml_text
+        xml_file_path = fr'Книги\{arg.text}'
+        self.text = parse_xml(xml_file_path)
+        self.text = '\n'.join(self.text[i:i+95] for i in range(0, len(self.text), 95))
+        self.lbl = Label(text = self.text[self.a:self.a + 1400])
+        self.layout.add_widget(self.lbl)
+        self.popup = Popup(title=fr'{self.meta.title}', content = self.layout, size= (100, 100))
+        self.button = Button(text="Домой", on_press=self.popup.dismiss, background_color=[255, 255, 255, 1], color=[0, 250, 1, 1], size_hint =(.5, .25))
+        self.right = Button(text="--->", on_press=self.right_button, background_color=[255, 255, 255, 1], color=[0, 250, 1, 1], size_hint =(.5, .25))
+        self.left = Button(text="<---", on_press=self.left_button, background_color=[255, 255, 255, 1],color=[0, 250, 1, 1], size_hint=(.5, .25))
+        self.layout.add_widget(self.button)
+        self.layout.add_widget(self.right)
+        self.layout.add_widget(self.left)
+        self.popup.open()
+    def right_button(self, arg):
+        self.pages += 1
+        self.a += 1400
+        self.layout.clear_widgets()
+        self.lbl = Label(text=self.text[self.a:self.a + 1400])
+        self.layout.add_widget(self.lbl)
+        self.button = Button(text="Домой", on_press=self.popup.dismiss, background_color=[255, 255, 255, 1],color=[0, 250, 1, 1], size_hint=(.5, .25))
+        self.right = Button(text="--->", on_press=self.right_button, background_color=[255, 255, 255, 1],color=[0, 250, 1, 1], size_hint=(.5, .25))
+        self.left = Button(text="<---", on_press=self.left_button, background_color=[255, 255, 255, 1],color=[0, 250, 1, 1], size_hint=(.5, .25))
+        self.layout.add_widget(self.button)
+        self.layout.add_widget(self.right)
+        self.layout.add_widget(self.left)
+    def left_button(self, arg):
+        self.pages -= 1
+        self.a -= 1400
+        self.layout.clear_widgets()
+        self.lbl = Label(text=self.text[self.a:self.a + 1400])
+        self.layout.add_widget(self.lbl)
+        self.button = Button(text="Домой", on_press=self.popup.dismiss, background_color=[255, 255, 255, 1],color=[0, 250, 1, 1], size_hint=(.5, .25))
+        self.right = Button(text="--->", on_press=self.right_button, background_color=[255, 255, 255, 1],color=[0, 250, 1, 1], size_hint=(.5, .25))
+        self.left = Button(text="<---", on_press=self.left_button, background_color=[255, 255, 255, 1],color=[0, 250, 1, 1], size_hint=(.5, .25))
+        self.layout.add_widget(self.button)
+        self.layout.add_widget(self.right)
+        self.layout.add_widget(self.left)
+if __name__ == '__main__':
+    my_app = MyApp()
+    my_app.run()
